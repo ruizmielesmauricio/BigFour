@@ -440,26 +440,45 @@ def render_comparison_album_cards(compare_stats: pd.DataFrame) -> None:
 
 
 # Render detailed per-band cards and charts for listeners, albums, tracks, and BPM.
-def render_band_overview_cards(stats: pd.DataFrame, artists: list[str]) -> None:
+def render_band_overview_cards(stats: pd.DataFrame, artists: list[str], tracks_df: pd.DataFrame) -> None:
     for artist in artists:
         artist_stats = stats[stats["artist"] == artist].copy()
+        artist_tracks = tracks_df[tracks_df["artist"] == artist].copy()
 
         if artist_stats.empty:
             continue
 
         total_listeners = artist_stats["total_listeners"].sum()
+
         most_listened = artist_stats.sort_values("total_playcount", ascending=False).iloc[0]
         least_listened = artist_stats.sort_values("total_playcount", ascending=True).iloc[0]
+
         bpm_available = artist_stats.dropna(subset=["avg_bpm"])
 
-        fastest = (
+        fastest_album = (
             bpm_available.sort_values("avg_bpm", ascending=False).iloc[0]
             if not bpm_available.empty
             else None
         )
-        slowest = (
+
+        slowest_album = (
             bpm_available.sort_values("avg_bpm", ascending=True).iloc[0]
             if not bpm_available.empty
+            else None
+        )
+
+        # Track-level fastest and slowest songs
+        tracks_with_bpm = artist_tracks.dropna(subset=["bpm"]).copy()
+
+        fastest_song = (
+            tracks_with_bpm.sort_values("bpm", ascending=False).iloc[0]
+            if not tracks_with_bpm.empty
+            else None
+        )
+
+        slowest_song = (
+            tracks_with_bpm.sort_values("bpm", ascending=True).iloc[0]
+            if not tracks_with_bpm.empty
             else None
         )
 
@@ -468,16 +487,21 @@ def render_band_overview_cards(stats: pd.DataFrame, artists: list[str]) -> None:
             unsafe_allow_html=True,
         )
 
-        col1, col2, col3, col4 = st.columns(4)
+        # 2x2 card grid
+        row1_col1, row1_col2 = st.columns(2)
 
-        with col1:
+        with row1_col1:
             body = (
                 '<div class="album-card-title">Total Listeners</div>'
                 f'<div class="album-value">{total_listeners:,.0f}</div>'
+                '<div class="album-card-title">Studio Albums</div>'
+                f'<div class="album-value">{artist_stats["album_name"].nunique()}</div>'
+                '<div class="album-card-title">Total Tracks</div>'
+                f'<div class="album-value">{artist_stats["total_tracks"].sum():,.0f}</div>'
             )
             st.markdown(card_html(artist, body), unsafe_allow_html=True)
 
-        with col2:
+        with row1_col2:
             body = (
                 '<div class="album-card-title">Most Listened Album</div>'
                 f'<div class="album-title-left">{html.escape(str(most_listened["album_name"]))}</div>'
@@ -489,41 +513,55 @@ def render_band_overview_cards(stats: pd.DataFrame, artists: list[str]) -> None:
             )
             st.markdown(card_html("Most vs Least Listened", body), unsafe_allow_html=True)
 
-        with col3:
-            if fastest is not None and slowest is not None:
+        row2_col1, row2_col2 = st.columns(2)
+
+        with row2_col1:
+            if fastest_album is not None and slowest_album is not None:
                 body = (
                     '<div class="album-card-title">Fastest Album</div>'
-                    f'<div class="album-title-left">{html.escape(str(fastest["album_name"]))}</div>'
-                    f'<div class="album-bpm">{fastest["avg_bpm"]:.1f} BPM</div>'
+                    f'<div class="album-title-left">{html.escape(str(fastest_album["album_name"]))}</div>'
+                    f'<div class="album-bpm">{fastest_album["avg_bpm"]:.1f} BPM</div>'
                     '<div class="album-label">Plays</div>'
-                    f'<div class="album-value">{fastest["total_playcount"]:,.0f}</div>'
+                    f'<div class="album-value">{fastest_album["total_playcount"]:,.0f}</div>'
                     '<div style="height:18px;"></div>'
                     '<div class="album-card-title">Slowest Album</div>'
-                    f'<div class="album-title-left">{html.escape(str(slowest["album_name"]))}</div>'
-                    f'<div class="album-bpm">{slowest["avg_bpm"]:.1f} BPM</div>'
+                    f'<div class="album-title-left">{html.escape(str(slowest_album["album_name"]))}</div>'
+                    f'<div class="album-bpm">{slowest_album["avg_bpm"]:.1f} BPM</div>'
                     '<div class="album-label">Plays</div>'
-                    f'<div class="album-value">{slowest["total_playcount"]:,.0f}</div>'
+                    f'<div class="album-value">{slowest_album["total_playcount"]:,.0f}</div>'
                 )
             else:
                 body = (
                     '<div class="album-card-title">BPM Data</div>'
-                    '<div class="album-title-left">No BPM data available</div>'
+                    '<div class="album-title-left">No album BPM data available</div>'
                 )
 
-            st.markdown(card_html("Fastest vs Slowest", body), unsafe_allow_html=True)
+            st.markdown(card_html("Fastest vs Slowest Albums", body), unsafe_allow_html=True)
 
-        with col4:
-            avg_bpm = artist_stats["avg_bpm"].mean()
-            avg_bpm_text = "N/A" if pd.isna(avg_bpm) else f"{avg_bpm:.1f} BPM"
-            body = (
-                '<div class="album-card-title">Studio Albums</div>'
-                f'<div class="album-value">{artist_stats["album_name"].nunique()}</div>'
-                '<div class="album-card-title">Total Tracks</div>'
-                f'<div class="album-value">{artist_stats["total_tracks"].sum():,.0f}</div>'
-                '<div class="album-card-title">Average BPM</div>'
-                f'<div class="album-bpm">{avg_bpm_text}</div>'
-            )
-            st.markdown(card_html("Discography Size", body), unsafe_allow_html=True)
+        with row2_col2:
+            if fastest_song is not None and slowest_song is not None:
+                body = (
+                    '<div class="album-card-title">Fastest Song</div>'
+                    f'<div class="album-title-left">{html.escape(str(fastest_song["track_name"]))}</div>'
+                    f'<div class="album-label">{html.escape(str(fastest_song["album_name"]))}</div>'
+                    f'<div class="album-bpm">{fastest_song["bpm"]:.1f} BPM</div>'
+                    f'<div class="album-label">Plays</div>'
+                    f'<div class="album-value">{fastest_song["lastfm_playcount"]:,.0f}</div>'
+                    '<div style="height:18px;"></div>'
+                    '<div class="album-card-title">Slowest Song</div>'
+                    f'<div class="album-title-left">{html.escape(str(slowest_song["track_name"]))}</div>'
+                    f'<div class="album-label">{html.escape(str(slowest_song["album_name"]))}</div>'
+                    f'<div class="album-bpm">{slowest_song["bpm"]:.1f} BPM</div>'
+                    f'<div class="album-label">Plays</div>'
+                    f'<div class="album-value">{slowest_song["lastfm_playcount"]:,.0f}</div>'
+                )
+            else:
+                body = (
+                    '<div class="album-card-title">Track BPM Data</div>'
+                    '<div class="album-title-left">No track BPM data available</div>'
+                )
+
+            st.markdown(card_html("Fastest vs Slowest Songs", body), unsafe_allow_html=True)
 
         artist_bpm_chart = bpm_available.assign(album_label=bpm_available["album_name"])
 
@@ -707,4 +745,4 @@ horizontal_bar(
 
 # Show a deeper per-band overview using the album-level statistics.
 section_title("Band Overview")
-render_band_overview_cards(stats, selected_ordered)
+render_band_overview_cards(stats, selected_ordered, filtered_df)
